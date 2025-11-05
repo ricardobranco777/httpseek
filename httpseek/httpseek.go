@@ -8,6 +8,8 @@ import (
 	"net/http/httputil"
 	"strconv"
 	"strings"
+
+	"github.com/ricardobranco777/httpseek/internal/logutil"
 )
 
 type Logger interface {
@@ -58,10 +60,12 @@ func NewReaderAt(url string, client *http.Client) (*ReaderAtHTTP, error) {
 		return nil, fmt.Errorf("httpseek: server does not support Range requests")
 	}
 
+	logger := logutil.NoopLogger()
 	return &ReaderAtHTTP{
-		url:    url,
 		client: client,
+		logger: logger,
 		size:   size,
+		url:    url,
 	}, nil
 }
 
@@ -82,12 +86,10 @@ func (r *ReaderAtHTTP) ReadAt(p []byte, off int64) (int, error) {
 	}
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, end))
 
-	if r.logger != nil {
-		if dump, err := httputil.DumpRequestOut(req, true); err == nil {
-			r.logger.Debug("", string(dump))
-		} else {
-			r.logger.Error("Failed to dump request", err)
-		}
+	if dump, err := httputil.DumpRequestOut(req, true); err == nil {
+		r.logger.Debug("", string(dump))
+	} else {
+		r.logger.Error("Failed to dump request", err)
 	}
 
 	resp, err := r.client.Do(req)
@@ -96,12 +98,10 @@ func (r *ReaderAtHTTP) ReadAt(p []byte, off int64) (int, error) {
 	}
 	defer resp.Body.Close()
 
-	if r.logger != nil {
-		if dump, err := httputil.DumpResponse(resp, true); err == nil {
-			r.logger.Debug("", string(dump))
-		} else {
-			r.logger.Error("Failed to dump response", err)
-		}
+	if dump, err := httputil.DumpResponse(resp, true); err == nil {
+		r.logger.Debug("", string(dump))
+	} else {
+		r.logger.Error("Failed to dump response", err)
 	}
 
 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
