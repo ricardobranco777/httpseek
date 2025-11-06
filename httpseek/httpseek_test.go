@@ -4,6 +4,8 @@ package httpseek
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -194,5 +196,61 @@ func TestReaderAt_HeadFailure(t *testing.T) {
 	_, err := NewReaderAt(srv.URL, nil)
 	if err == nil || !strings.Contains(err.Error(), "returned 403") {
 		t.Fatalf("expected non-2xx HEAD failure, got %v", err)
+	}
+}
+
+// serveSlowBytes simulates a server that supports Range but sends data slowly.
+func serveSlowBytes(data []byte, delay time.Duration) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case "HEAD":
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
+			w.Header().Set("Accept-Ranges", "bytes")
+			w.WriteHeader(http.StatusOK)
+		case "GET":
+			rangeHdr := r.Header.Get("Range")
+			var start, end int
+			fmt.Sscanf(rangeHdr, "bytes=%d-%d", &start, &end)
+			if start < 0 || end >= len(data) {
+				http.Error(w, "invalid range", http.StatusRequestedRangeNotSatisfiable)
+				return
+			}
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, len(data)))
+			w.WriteHeader(http.StatusPartialContent)
+			for _, b := range data[start : end+1] {
+				w.Write([]byte{b})
+				time.Sleep(delay) // simulate slow transfer
+			}
+		default:
+			http.Error(w, "unsupported", http.StatusMethodNotAllowed)
+		}
+	}))
+}
+
+func TestReaderAtContext_Cancelled(t *testing.T) {
+	data := []byte("abcdefghijklmnopqrstuvwxyz")
+	srv := serveSlowBytes(data, 50*time.Millisecond)
+	defer srv.Close()
+
+	r, err := NewReaderAt(srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	buf := make([]byte, 10)
+	start := time.Now()
+	n, err := r.ReadAtContext(ctx, buf, 0)
+	elapsed := time.Since(start)
+
+	// We expect cancellation before completion.
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got n=%d err=%v", n, err)
+	}
+	if elapsed > 200*time.Millisecond {
+		t.Fatalf("expected early cancel, took %v", elapsed)
 	}
 }

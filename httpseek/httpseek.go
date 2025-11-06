@@ -77,6 +77,11 @@ func NewReaderAt(url string, client *http.Client) (*ReaderAtHTTP, error) {
 
 // ReadAt issues a GET request with Range: bytes=off-(off+len(p)-1).
 func (r *ReaderAtHTTP) ReadAt(p []byte, off int64) (int, error) {
+	return r.ReadAtContext(context.Background(), p, off)
+}
+
+// ReadAt with context
+func (r *ReaderAtHTTP) ReadAtContext(ctx context.Context, p []byte, off int64) (int, error) {
 	if off >= r.size {
 		return 0, io.EOF
 	}
@@ -86,7 +91,7 @@ func (r *ReaderAtHTTP) ReadAt(p []byte, off int64) (int, error) {
 		end = r.size - 1
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), "GET", r.url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", r.url, nil)
 	if err != nil {
 		return 0, err
 	}
