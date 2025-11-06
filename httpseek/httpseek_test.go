@@ -131,12 +131,12 @@ func TestReaderAt_PreconditionFailed_ETag(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Simulate remote file change
-	r.etag = `"v2"`
+	r.meta.ETag = `"v2"`
 
 	buf := make([]byte, 4)
 	_, err = r.ReadAt(buf, 0)
-	if err == nil || !strings.Contains(err.Error(), "remote resource changed") {
-		t.Fatalf("expected precondition failure, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "precondition failed") {
+		t.Fatalf("expected precondition failed, got %v", err)
 	}
 }
 
@@ -150,12 +150,12 @@ func TestReaderAt_PreconditionFailed_LastModified(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Simulate stale last-modified date
-	r.lastMod = "Thu, 01 Jan 1970 00:00:00 old"
+	r.meta.LastModified = "Thu, 01 Jan 1970 00:00:00 old"
 
 	buf := make([]byte, 4)
 	_, err = r.ReadAt(buf, 0)
-	if err == nil || !strings.Contains(err.Error(), "remote resource changed") {
-		t.Fatalf("expected precondition failure, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "precondition failed") {
+		t.Fatalf("expected precondition failed, got %v", err)
 	}
 }
 

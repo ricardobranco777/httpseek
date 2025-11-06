@@ -11,22 +11,17 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ricardobranco777/httpseek/internal/httpmeta"
 	"github.com/ricardobranco777/httpseek/internal/logutil"
 )
 
-type Logger interface {
-	Debug(msg string, args ...any)
-	Error(msg string, args ...any)
-}
-
-// ReaderAtHTTP implements io.ReaderAt for HTTP URLs using Range requests.
+// ReaderAtHTTP implements io.ReaderAt via HTTP Range requests.
 type ReaderAtHTTP struct {
-	client  *http.Client
-	logger  Logger
-	size    int64
-	etag    string
-	lastMod string
-	url     string
+	client *http.Client
+	logger logutil.Logger
+	meta   httpmeta.Metadata
+	size   int64
+	url    string
 }
 
 // NewReaderAt creates a ReaderAtHTTP. If client is nil, http.DefaultClient is used.
@@ -54,7 +49,6 @@ func NewReaderAt(url string, client *http.Client) (*ReaderAtHTTP, error) {
 	if cl == "" {
 		return nil, fmt.Errorf("httpseek: missing Content-Length")
 	}
-
 	size, err := strconv.ParseInt(cl, 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("httpseek: invalid Content-Length: %w", err)
@@ -64,18 +58,16 @@ func NewReaderAt(url string, client *http.Client) (*ReaderAtHTTP, error) {
 		return nil, fmt.Errorf("httpseek: server does not support Range requests")
 	}
 
-	logger := logutil.NoopLogger()
 	return &ReaderAtHTTP{
-		client:  client,
-		logger:  logger,
-		size:    size,
-		etag:    resp.Header.Get("ETag"),
-		lastMod: resp.Header.Get("Last-Modified"),
-		url:     url,
+		url:    url,
+		client: client,
+		size:   size,
+		logger: logutil.NoopLogger(),
+		meta:   httpmeta.FromHeaders(resp.Header), // ← capture metadata
 	}, nil
 }
 
-// ReadAt issues a GET request with Range: bytes=off-(off+len(p)-1).
+// ReadAt issues a conditional GET with Range: bytes=off-(off+len(p)-1).
 func (r *ReaderAtHTTP) ReadAt(p []byte, off int64) (int, error) {
 	return r.ReadAtContext(context.Background(), p, off)
 }
@@ -96,14 +88,7 @@ func (r *ReaderAtHTTP) ReadAtContext(ctx context.Context, p []byte, off int64) (
 		return 0, err
 	}
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, end))
-
-	// Add conditional headers if available
-	if r.etag != "" {
-		req.Header.Set("If-Match", r.etag)
-	}
-	if r.lastMod != "" {
-		req.Header.Set("If-Unmodified-Since", r.lastMod)
-	}
+	r.meta.ApplyValidators(req.Header)
 
 	if dump, err := httputil.DumpRequestOut(req, true); err == nil {
 		r.logger.Debug("", string(dump))
@@ -125,11 +110,17 @@ func (r *ReaderAtHTTP) ReadAtContext(ctx context.Context, p []byte, off int64) (
 
 	switch resp.StatusCode {
 	case http.StatusPartialContent, http.StatusOK:
-		// Proceed
+		// accepted
 	case http.StatusPreconditionFailed:
-		return 0, fmt.Errorf("httpseek: remote resource changed (etag=%q)", r.etag)
+		return 0, fmt.Errorf("httpseek: precondition failed (HTTP 412)")
 	default:
 		return 0, fmt.Errorf("httpseek: unexpected HTTP status %s", resp.Status)
+	}
+
+	// Update metadata if changed
+	newMeta := httpmeta.FromHeaders(resp.Header)
+	if !r.meta.Equal(newMeta) {
+		r.meta = newMeta
 	}
 
 	n, err := io.ReadFull(resp.Body, p[:end-off+1])
@@ -139,7 +130,7 @@ func (r *ReaderAtHTTP) ReadAtContext(ctx context.Context, p []byte, off int64) (
 	return n, err
 }
 
-// Size returns the content length.
+// Size returns the total content length.
 func (r *ReaderAtHTTP) Size() int64 { return r.size }
 
 // Close is a no-op for interface compatibility.
@@ -147,6 +138,4 @@ func (r *ReaderAtHTTP) Close() error { return nil }
 
 // SetLogger sets an optional logger for debug output.
 // If nil, no logs are emitted.
-func (r *ReaderAtHTTP) SetLogger(l Logger) {
-	r.logger = l
-}
+func (r *ReaderAtHTTP) SetLogger(l logutil.Logger) { r.logger = l }

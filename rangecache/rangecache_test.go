@@ -18,6 +18,7 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
+// simple range server
 func newRangeServer() (*httptest.Server, *int64) {
 	hitCount := new(int64)
 	data := []byte("abcdefghijklmnopqrstuvwxyz")
@@ -36,7 +37,7 @@ func newRangeServer() (*httptest.Server, *int64) {
 			return
 		}
 		w.WriteHeader(http.StatusPartialContent)
-		w.Write(data[start : end+1])
+		_, _ = w.Write(data[start : end+1])
 	}))
 	return srv, hitCount
 }
@@ -56,7 +57,7 @@ func TestCachedRangeTransport_CachesResponses(t *testing.T) {
 	req, _ := http.NewRequest("GET", srv.URL, nil)
 	req.Header.Set("Range", "bytes=0-3")
 
-	// first request -> cache miss
+	// First request → cache miss
 	resp1, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -68,11 +69,13 @@ func TestCachedRangeTransport_CachesResponses(t *testing.T) {
 		t.Fatalf("unexpected body: %q", body1)
 	}
 	if atomic.LoadInt64(hitCount) != 1 {
-		t.Fatalf("expected 1 server hit, got %d", hitCount)
+		t.Fatalf("expected 1 server hit, got %d", atomic.LoadInt64(hitCount))
 	}
 
-	// second identical request -> should hit cache
-	resp2, err := client.Do(req)
+	// Second identical request → cache hit
+	req2, _ := http.NewRequest("GET", srv.URL, nil)
+	req2.Header.Set("Range", "bytes=0-3")
+	resp2, err := client.Do(req2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +86,7 @@ func TestCachedRangeTransport_CachesResponses(t *testing.T) {
 		t.Fatalf("cached response mismatch: %q vs %q", body1, body2)
 	}
 	if atomic.LoadInt64(hitCount) != 1 {
-		t.Fatalf("expected cached hit (no new requests), got %d", hitCount)
+		t.Fatalf("expected cache hit (no new requests), got %d", atomic.LoadInt64(hitCount))
 	}
 }
 
@@ -139,7 +142,7 @@ func TestCachedRangeTransport_CacheMissDifferentRange(t *testing.T) {
 	respB.Body.Close()
 
 	if atomic.LoadInt64(hitCount) != 2 {
-		t.Fatalf("expected 2 server hits for distinct ranges, got %d", hitCount)
+		t.Fatalf("expected 2 server hits for distinct ranges, got %d", atomic.LoadInt64(hitCount))
 	}
 }
 
@@ -163,17 +166,19 @@ func TestCachedRangeTransport_ClearRemovesEntries(t *testing.T) {
 	resp1.Body.Close()
 
 	if atomic.LoadInt64(hitCount) != 1 {
-		t.Fatalf("expected 1 hit before Clear, got %d", hitCount)
+		t.Fatalf("expected 1 hit before Clear, got %d", atomic.LoadInt64(hitCount))
 	}
 
 	cache.Clear()
 
-	resp2, _ := client.Do(req)
+	req2, _ := http.NewRequest("GET", srv.URL, nil)
+	req2.Header.Set("Range", "bytes=0-3")
+	resp2, _ := client.Do(req2)
 	io.Copy(io.Discard, resp2.Body)
 	resp2.Body.Close()
 
 	if atomic.LoadInt64(hitCount) != 2 {
-		t.Fatalf("expected cache cleared -> new request, got %d", hitCount)
+		t.Fatalf("expected cache cleared -> new request, got %d", atomic.LoadInt64(hitCount))
 	}
 }
 
@@ -233,7 +238,7 @@ func TestCachedRangeTransport_Non206ResponseIsNotCached(t *testing.T) {
 	}
 
 	if atomic.LoadInt64(hitCount) != 2 {
-		t.Fatalf("expected no caching for non-206 responses, got %d hits", hitCount)
+		t.Fatalf("expected no caching for non-206 responses, got %d hits", atomic.LoadInt64(hitCount))
 	}
 }
 
@@ -249,15 +254,21 @@ func TestCachedRangeTransport_ConcurrentAccess(t *testing.T) {
 		},
 	}
 
-	req, _ := http.NewRequest("GET", srv.URL, nil)
-	req.Header.Set("Range", "bytes=0-3")
-
-	// Fill cache with one request first
-	client.Do(req)
+	// Warm cache
+	reqWarm, _ := http.NewRequest("GET", srv.URL, nil)
+	reqWarm.Header.Set("Range", "bytes=0-3")
+	respW, err := client.Do(reqWarm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, respW.Body)
+	respW.Body.Close()
 
 	var wg sync.WaitGroup
 	for range 10 {
 		wg.Go(func() {
+			req, _ := http.NewRequest("GET", srv.URL, nil)
+			req.Header.Set("Range", "bytes=0-3")
 			resp, err := client.Do(req)
 			if err != nil {
 				t.Errorf("request error: %v", err)
@@ -270,7 +281,7 @@ func TestCachedRangeTransport_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 
 	if atomic.LoadInt64(hitCount) != 1 {
-		t.Fatalf("expected concurrent cache hit after first fetch, got %d", hitCount)
+		t.Fatalf("expected concurrent cache hit after first fetch, got %d", atomic.LoadInt64(hitCount))
 	}
 }
 
@@ -286,12 +297,11 @@ func TestCachedRangeTransport_Singleflight(t *testing.T) {
 		},
 	}
 
-	req, _ := http.NewRequest("GET", srv.URL, nil)
-	req.Header.Set("Range", "bytes=0-3")
-
 	var wg sync.WaitGroup
 	for range 10 {
 		wg.Go(func() {
+			req, _ := http.NewRequest("GET", srv.URL, nil)
+			req.Header.Set("Range", "bytes=0-3")
 			resp, err := client.Do(req)
 			if err != nil {
 				t.Error(err)
@@ -303,7 +313,7 @@ func TestCachedRangeTransport_Singleflight(t *testing.T) {
 	}
 	wg.Wait()
 
-	if *hitCount != 1 {
-		t.Fatalf("expected 1 server hit, got %d", *hitCount)
+	if atomic.LoadInt64(hitCount) != 1 {
+		t.Fatalf("expected 1 server hit, got %d", atomic.LoadInt64(hitCount))
 	}
 }
