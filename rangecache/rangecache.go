@@ -96,7 +96,7 @@ func (t *CachedRangeTransport) RoundTrip(req *http.Request) (*http.Response, err
 	}
 
 	// Use singleflight to prevent duplicate fetches for same key
-	v, err, _ := t.group.Do(key, func() (interface{}, error) {
+	v, err, _ := t.group.Do(key, func() (any, error) {
 		resp, err := t.Transport.RoundTrip(req)
 		if err != nil {
 			return nil, err
