@@ -21,10 +21,12 @@ type Logger interface {
 
 // ReaderAtHTTP implements io.ReaderAt for HTTP URLs using Range requests.
 type ReaderAtHTTP struct {
-	client *http.Client
-	logger Logger
-	size   int64
-	url    string
+	client  *http.Client
+	logger  Logger
+	size    int64
+	etag    string
+	lastMod string
+	url     string
 }
 
 // NewReaderAt creates a ReaderAtHTTP. If client is nil, http.DefaultClient is used.
@@ -64,10 +66,12 @@ func NewReaderAt(url string, client *http.Client) (*ReaderAtHTTP, error) {
 
 	logger := logutil.NoopLogger()
 	return &ReaderAtHTTP{
-		client: client,
-		logger: logger,
-		size:   size,
-		url:    url,
+		client:  client,
+		logger:  logger,
+		size:    size,
+		etag:    resp.Header.Get("ETag"),
+		lastMod: resp.Header.Get("Last-Modified"),
+		url:     url,
 	}, nil
 }
 
@@ -88,6 +92,14 @@ func (r *ReaderAtHTTP) ReadAt(p []byte, off int64) (int, error) {
 	}
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, end))
 
+	// Add conditional headers if available
+	if r.etag != "" {
+		req.Header.Set("If-Match", r.etag)
+	}
+	if r.lastMod != "" {
+		req.Header.Set("If-Unmodified-Since", r.lastMod)
+	}
+
 	if dump, err := httputil.DumpRequestOut(req, true); err == nil {
 		r.logger.Debug("", string(dump))
 	} else {
@@ -106,7 +118,12 @@ func (r *ReaderAtHTTP) ReadAt(p []byte, off int64) (int, error) {
 		r.logger.Error("Failed to dump response", err)
 	}
 
-	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
+	switch resp.StatusCode {
+	case http.StatusPartialContent, http.StatusOK:
+		// Proceed
+	case http.StatusPreconditionFailed:
+		return 0, fmt.Errorf("httpseek: remote resource changed (etag=%q)", r.etag)
+	default:
 		return 0, fmt.Errorf("httpseek: unexpected HTTP status %s", resp.Status)
 	}
 
