@@ -3,6 +3,7 @@
 package logutil
 
 import (
+	"fmt"
 	"log"
 )
 
@@ -21,14 +22,7 @@ func (f LogFunc) Error(msg string, args ...any) { f("ERROR", msg, args...) }
 // StdLogger returns a simple default logger.
 func StdLogger() Logger {
 	return LogFunc(func(level, msg string, args ...any) {
-		switch len(args) {
-		case 0:
-			log.Printf("%s: %s", level, msg)
-		case 1:
-			log.Printf("%s: %s %s", level, msg, args[0])
-		default:
-			log.Printf("%s: %s %v", level, msg, args)
-		}
+		log.Print(level + ": " + fmt.Sprintln(append([]any{msg}, args...)...))
 	})
 }
 
