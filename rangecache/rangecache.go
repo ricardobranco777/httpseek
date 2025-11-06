@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"sync"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // Cache defines a minimal interface for storing range responses.
@@ -56,6 +58,7 @@ func (c *MemoryCache) Put(k string, v []byte) {
 type CachedRangeTransport struct {
 	Transport http.RoundTripper
 	Cache     Cache
+	group     singleflight.Group
 }
 
 // RoundTrip implements http.RoundTripper with Range caching.
@@ -74,6 +77,8 @@ func (t *CachedRangeTransport) RoundTrip(req *http.Request) (*http.Response, err
 	}
 
 	key := req.URL.String() + "|" + rangeHdr
+
+	// Try cache first
 	if t.Cache != nil {
 		if data, ok := t.Cache.Get(key); ok {
 			return &http.Response{
@@ -90,22 +95,35 @@ func (t *CachedRangeTransport) RoundTrip(req *http.Request) (*http.Response, err
 		}
 	}
 
-	resp, err := t.Transport.RoundTrip(req)
+	// Use singleflight to prevent duplicate fetches for same key
+	v, err, _ := t.group.Do(key, func() (interface{}, error) {
+		resp, err := t.Transport.RoundTrip(req)
+		if err != nil {
+			return nil, err
+		}
+
+		// Only cache partial content (Range) responses
+		if resp.StatusCode == http.StatusPartialContent {
+			body, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				return nil, err
+			}
+			if t.Cache != nil {
+				t.Cache.Put(key, body)
+			}
+			resp.Body = io.NopCloser(bytes.NewReader(body))
+			resp.ContentLength = int64(len(body))
+			return resp, nil
+		}
+
+		// Return as-is if not cacheable
+		return resp, nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	if resp.StatusCode == http.StatusPartialContent {
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			return nil, err
-		}
-		if t.Cache != nil {
-			t.Cache.Put(key, body)
-		}
-		resp.Body = io.NopCloser(bytes.NewReader(body))
-		resp.ContentLength = int64(len(body))
-	}
-	return resp, nil
+	// Return shared result
+	return v.(*http.Response), nil
 }

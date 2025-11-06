@@ -275,3 +275,39 @@ func TestCachedRangeTransport_ConcurrentAccess(t *testing.T) {
 		t.Fatalf("expected concurrent cache hit after first fetch, got %d", hitCount)
 	}
 }
+
+func TestCachedRangeTransport_Singleflight(t *testing.T) {
+	srv, hitCount := newRangeServer()
+	defer srv.Close()
+
+	cache := NewMemoryCache()
+	client := &http.Client{
+		Transport: &CachedRangeTransport{
+			Transport: http.DefaultTransport,
+			Cache:     cache,
+		},
+	}
+
+	req, _ := http.NewRequest("GET", srv.URL, nil)
+	req.Header.Set("Range", "bytes=0-3")
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+		}()
+	}
+	wg.Wait()
+
+	if *hitCount != 1 {
+		t.Fatalf("expected 1 server hit, got %d", *hitCount)
+	}
+}
