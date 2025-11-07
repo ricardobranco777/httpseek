@@ -138,4 +138,4 @@ func (r *ReaderAtHTTP) Close() error { return nil }
 func (r *ReaderAtHTTP) SetLogger(l Logger) { r.logger = l }
 
 // Compile-time interface satisfaction checks
-var _ io.ReaderAt       = (*ReaderAtHTTP)(nil)
+var _ io.ReaderAt = (*ReaderAtHTTP)(nil)

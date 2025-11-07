@@ -14,9 +14,10 @@ func main() {
 	url := "https://download.freebsd.org/releases/amd64/amd64/ISO-IMAGES/14.3/FreeBSD-14.3-RELEASE-amd64-disc1.iso"
 
 	// Wrap the default transport with your cache layer
-	cachedTransport := &httpseek.CachedRangeTransport{
+	cachedTransport := &httpseek.CachedBlockTransport{
 		Transport: http.DefaultTransport,
-		Cache:     httpseek.NewMemoryCache(),
+		Cache:     httpseek.NewMemoryBlockCache(),
+		BlockSize: 512,
 	}
 
 	client := &http.Client{Transport: cachedTransport}

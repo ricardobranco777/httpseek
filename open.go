@@ -19,9 +19,9 @@ func Open(url string) (*HTTPFile, error) {
 // OpenCached opens a remote HTTP file using a caching transport.
 func OpenCached(url string) (*HTTPFile, error) {
 	client := &http.Client{
-		Transport: &CachedRangeTransport{
+		Transport: &CachedBlockTransport{
 			Transport: http.DefaultTransport,
-			Cache:     NewMemoryCache(),
+			Cache:     NewMemoryBlockCache(),
 		},
 	}
 	ra, err := NewReaderAt(url, client)
