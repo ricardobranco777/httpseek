@@ -1,6 +1,7 @@
 package httpseek
 
 import (
+	"context"
 	"errors"
 	"io"
 	"sync"
@@ -8,20 +9,22 @@ import (
 
 var ErrInvalidSeek = errors.New("invalid seek")
 
-// Reader implements io.ReadSeeker on top of ReaderAtHTTP.
-type Reader struct {
+// HTTPFile provides a file-like abstraction for HTTP resources.
+// It implements io.ReadSeeker, io.ReaderAt, and io.Closer.
+// Internally, it uses ReaderAtHTTP for range-based access.
+type HTTPFile struct {
 	*ReaderAtHTTP
 	off int64
 	mu  sync.Mutex
 }
 
 // NewReadSeeker wraps an existing ReaderAtHTTP.
-func NewReadSeeker(r *ReaderAtHTTP) *Reader {
-	return &Reader{ReaderAtHTTP: r}
+func NewReadSeeker(r *ReaderAtHTTP) *HTTPFile {
+	return &HTTPFile{ReaderAtHTTP: r}
 }
 
 // Read reads from the current offset and advances it.
-func (r *Reader) Read(p []byte) (int, error) {
+func (r *HTTPFile) Read(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -31,7 +34,7 @@ func (r *Reader) Read(p []byte) (int, error) {
 }
 
 // Seek implements io.Seeker.
-func (r *Reader) Seek(offset int64, whence int) (int64, error) {
+func (r *HTTPFile) Seek(offset int64, whence int) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -52,4 +55,9 @@ func (r *Reader) Seek(offset int64, whence int) (int64, error) {
 	}
 	r.off = newOff
 	return r.off, nil
+}
+
+// ReadAtContext is like ReadAt with context.
+func (f *HTTPFile) ReadAtContext(ctx context.Context, p []byte, off int64) (int, error) {
+	return f.ReaderAtHTTP.ReadAtContext(ctx, p, off)
 }

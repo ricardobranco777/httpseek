@@ -143,3 +143,6 @@ func (t *CachedRangeTransport) RoundTrip(req *http.Request) (*http.Response, err
 	}
 	return v.(*http.Response), nil
 }
+
+// Compile-time interface satisfaction checks
+var _ http.RoundTripper = (*CachedRangeTransport)(nil)

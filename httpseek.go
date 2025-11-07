@@ -136,3 +136,6 @@ func (r *ReaderAtHTTP) Close() error { return nil }
 // SetLogger sets an optional logger for debug output.
 // If nil, no logs are emitted.
 func (r *ReaderAtHTTP) SetLogger(l Logger) { r.logger = l }
+
+// Compile-time interface satisfaction checks
+var _ io.ReaderAt       = (*ReaderAtHTTP)(nil)
