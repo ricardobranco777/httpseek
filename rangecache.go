@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 
-package rangecache
+package httpseek
 
 import (
 	"bytes"
@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/ricardobranco777/httpseek/internal/httpmeta"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -24,7 +23,7 @@ type Cache interface {
 // CachedEntry stores the response body and associated validation metadata.
 type CachedEntry struct {
 	Data []byte
-	Meta httpmeta.Metadata
+	Meta Metadata
 }
 
 // MemoryCache is a simple in-memory implementation.
@@ -124,7 +123,7 @@ func (t *CachedRangeTransport) RoundTrip(req *http.Request) (*http.Response, err
 			if err != nil {
 				return nil, err
 			}
-			newMeta := httpmeta.FromHeaders(resp.Header)
+			newMeta := FromHeaders(resp.Header)
 
 			if t.Cache != nil {
 				t.Cache.Put(key, &CachedEntry{Data: body, Meta: newMeta})

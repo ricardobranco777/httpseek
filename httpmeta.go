@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 
-package httpmeta
+package httpseek
 
 import "net/http"
 

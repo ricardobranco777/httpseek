@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-2-Clause */
 
-package logutil
+package httpseek
 
 import (
 	"fmt"

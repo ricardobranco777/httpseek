@@ -10,16 +10,13 @@ import (
 	"net/http/httputil"
 	"strconv"
 	"strings"
-
-	"github.com/ricardobranco777/httpseek/internal/httpmeta"
-	"github.com/ricardobranco777/httpseek/internal/logutil"
 )
 
 // ReaderAtHTTP implements io.ReaderAt via HTTP Range requests.
 type ReaderAtHTTP struct {
 	client *http.Client
-	logger logutil.Logger
-	meta   httpmeta.Metadata
+	logger Logger
+	meta   Metadata
 	size   int64
 	url    string
 }
@@ -62,8 +59,8 @@ func NewReaderAt(url string, client *http.Client) (*ReaderAtHTTP, error) {
 		url:    url,
 		client: client,
 		size:   size,
-		logger: logutil.NoopLogger(),
-		meta:   httpmeta.FromHeaders(resp.Header), // ← capture metadata
+		logger: NoopLogger(),
+		meta:   FromHeaders(resp.Header), // ← capture metadata
 	}, nil
 }
 
@@ -118,7 +115,7 @@ func (r *ReaderAtHTTP) ReadAtContext(ctx context.Context, p []byte, off int64) (
 	}
 
 	// Update metadata if changed
-	newMeta := httpmeta.FromHeaders(resp.Header)
+	newMeta := FromHeaders(resp.Header)
 	if !r.meta.Equal(newMeta) {
 		r.meta = newMeta
 	}
@@ -138,4 +135,4 @@ func (r *ReaderAtHTTP) Close() error { return nil }
 
 // SetLogger sets an optional logger for debug output.
 // If nil, no logs are emitted.
-func (r *ReaderAtHTTP) SetLogger(l logutil.Logger) { r.logger = l }
+func (r *ReaderAtHTTP) SetLogger(l Logger) { r.logger = l }
