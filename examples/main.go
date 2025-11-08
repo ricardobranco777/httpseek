@@ -5,7 +5,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"net/http"
 
 	"github.com/ricardobranco777/httpseek"
 )
@@ -13,20 +12,11 @@ import (
 func main() {
 	url := "https://download.freebsd.org/releases/amd64/amd64/ISO-IMAGES/14.3/FreeBSD-14.3-RELEASE-amd64-disc1.iso"
 
-	// Wrap the default transport with your cache layer
-	cachedTransport := &httpseek.CachedBlockTransport{
-		Transport: http.DefaultTransport,
-		Cache:     httpseek.NewMemoryBlockCache(),
-		BlockSize: 512,
-	}
-
-	client := &http.Client{Transport: cachedTransport}
-	ra, err := httpseek.NewReaderAt(url, client)
+	r, err := httpseek.Open(url)
 	if err != nil {
 		panic(err)
 	}
-	ra.SetLogger(httpseek.StdLogger())
-	r := httpseek.NewReadSeeker(ra)
+	r.SetLogger(httpseek.StdLogger())
 	defer r.Close()
 
 	buf := make([]byte, 16)

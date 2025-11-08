@@ -60,7 +60,7 @@ func NewReaderAt(url string, client *http.Client) (*ReaderAtHTTP, error) {
 		client: client,
 		size:   size,
 		logger: NoopLogger(),
-		meta:   FromHeaders(resp.Header), // ← capture metadata
+		meta:   FromHeaders(resp.Header),
 	}, nil
 }
 
