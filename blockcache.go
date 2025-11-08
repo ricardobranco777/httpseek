@@ -66,11 +66,13 @@ type CachedBlockTransport struct {
 	group     singleflight.Group
 }
 
+// Compile-time check
+var _ http.RoundTripper = (*CachedBlockTransport)(nil)
+
 // DefaultBlockSize is the default block alignment size.
 const DefaultBlockSize = 512
 
 // RoundTrip implements http.RoundTripper with transparent block-aligned caching.
-// It can combine multiple cached blocks to satisfy unaligned or multi-block ranges.
 func (t *CachedBlockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if t.Transport == nil {
 		t.Transport = http.DefaultTransport
@@ -78,9 +80,8 @@ func (t *CachedBlockTransport) RoundTrip(req *http.Request) (*http.Response, err
 	if t.BlockSize <= 0 {
 		t.BlockSize = DefaultBlockSize
 	}
-	bs := int64(t.BlockSize)
+	bs := t.BlockSize
 
-	// Pass through non-GET or non-Range requests.
 	if req.Method != "GET" {
 		return t.Transport.RoundTrip(req)
 	}
@@ -96,75 +97,87 @@ func (t *CachedBlockTransport) RoundTrip(req *http.Request) (*http.Response, err
 		return t.Transport.RoundTrip(req)
 	}
 	if n == 1 || end < start {
-		// Open-ended or invalid -> fetch one full block.
 		end = start + bs - 1
 	}
-	if start < 0 {
-		start = 0
-	}
 
-	// Compute aligned block boundaries.
 	blockStart := (start / bs) * bs
-	blockEnd := max((end/bs)*bs, blockStart)
-
+	blockEnd := (end / bs) * bs
 	numBlocks := ((blockEnd - blockStart) / bs) + 1
-	if numBlocks <= 0 {
-		numBlocks = 1
-	}
 
-	// Preallocate combined buffer to avoid reallocs.
-	combined := make([]byte, 0, int(numBlocks*bs))
-
+	missing := make([]int64, 0, numBlocks)
 	for b := blockStart; b <= blockEnd; b += bs {
 		blockNum := b / bs
-		var data []byte
-		var ok bool
-
-		// Try cache first.
-		if t.Cache != nil {
-			data, ok = t.Cache.Get(blockNum)
+		if t.Cache == nil {
+			missing = append(missing, blockNum)
+			continue
 		}
+		if _, ok := t.Cache.Get(blockNum); !ok {
+			missing = append(missing, blockNum)
+		}
+	}
 
-		if !ok {
-			key := strconv.FormatInt(blockNum, 10)
-			v, err, _ := t.group.Do(key, func() (any, error) {
-				rangeStart := b
-				rangeEnd := b + bs - 1
+	// Fetch all missing blocks in one contiguous request if needed
+	if len(missing) > 0 {
+		firstBlock := missing[0]
+		lastBlock := missing[len(missing)-1]
+		key := strconv.FormatInt(firstBlock, 10)
 
-				newReq := req.Clone(req.Context())
-				newReq.Header = req.Header.Clone()
-				newReq.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", rangeStart, rangeEnd))
+		_, err, _ = t.group.Do(key, func() (any, error) {
+			rangeStart := firstBlock * bs
+			rangeEnd := (lastBlock+1)*bs - 1
 
-				resp, err := t.Transport.RoundTrip(newReq)
-				if err != nil {
-					return nil, err
-				}
-				defer resp.Body.Close()
+			newReq := req.Clone(req.Context())
+			newReq.Header = req.Header.Clone()
+			newReq.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", rangeStart, rangeEnd))
 
-				if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
-					return nil, fmt.Errorf("unexpected HTTP status %s", resp.Status)
-				}
-
-				body, err := io.ReadAll(resp.Body)
-				if err != nil {
-					return nil, err
-				}
-
-				if t.Cache != nil {
-					t.Cache.Put(blockNum, body)
-				}
-				return body, nil
-			})
+			resp, err := t.Transport.RoundTrip(newReq)
 			if err != nil {
 				return nil, err
 			}
-			data = v.([]byte)
-		}
+			defer resp.Body.Close()
 
-		combined = append(combined, data...)
+			if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
+				return nil, fmt.Errorf("unexpected HTTP status %s", resp.Status)
+			}
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+
+			// Split and populate cache
+			for i, b := range missing {
+				offset := int64(i) * bs
+				if offset >= int64(len(body)) {
+					break
+				}
+				end := offset + bs
+				if end > int64(len(body)) {
+					end = int64(len(body))
+				}
+				if t.Cache != nil {
+					t.Cache.Put(b, body[offset:end])
+				}
+			}
+			return nil, nil
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	// Slice precisely the requested sub-range.
+	// Rebuild combined body in logical block order
+	combined := make([]byte, 0, int(numBlocks*bs))
+	for b := blockStart; b <= blockEnd; b += bs {
+		blockNum := b / bs
+		if t.Cache != nil {
+			if data, ok := t.Cache.Get(blockNum); ok {
+				combined = append(combined, data...)
+			}
+		}
+	}
+
+	// Slice to requested sub-range
 	offset := start - blockStart
 	length := end - start + 1
 	if offset < 0 {
@@ -176,13 +189,13 @@ func (t *CachedBlockTransport) RoundTrip(req *http.Request) (*http.Response, err
 	if length < 0 {
 		length = 0
 	}
-	body := combined[offset : offset+length]
+	data := combined[offset : offset+length]
 
 	resp := &http.Response{
 		StatusCode:    http.StatusPartialContent,
 		Status:        "206 Partial Content",
-		Body:          io.NopCloser(bytes.NewReader(body)),
-		ContentLength: int64(len(body)),
+		Body:          io.NopCloser(bytes.NewReader(data)),
+		ContentLength: int64(len(data)),
 		Header: http.Header{
 			"Content-Range": []string{fmt.Sprintf("bytes %d-%d/*", start, end)},
 		},
@@ -193,6 +206,3 @@ func (t *CachedBlockTransport) RoundTrip(req *http.Request) (*http.Response, err
 	}
 	return resp, nil
 }
-
-// Compile-time check
-var _ http.RoundTripper = (*CachedBlockTransport)(nil)

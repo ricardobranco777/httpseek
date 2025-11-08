@@ -161,8 +161,8 @@ func TestCachedBlockTransport_UnalignedRequest(t *testing.T) {
 	if len(data) != 151 {
 		t.Fatalf("expected 151 bytes, got %d", len(data))
 	}
-	if atomic.LoadInt64(hitCount) != 2 {
-		t.Fatalf("expected 2 network request, got %d", atomic.LoadInt64(hitCount))
+	if atomic.LoadInt64(hitCount) != 1 {
+		t.Fatalf("expected 1 network request, got %d", atomic.LoadInt64(hitCount))
 	}
 }
 
