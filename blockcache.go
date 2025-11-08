@@ -129,12 +129,15 @@ func (t *CachedBlockTransport) RoundTrip(req *http.Request) (*http.Response, err
 			newReq := req.Clone(req.Context())
 			newReq.Header = req.Header.Clone()
 			newReq.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", rangeStart, rangeEnd))
+			logRequest(newReq)
 
 			resp, err := t.Transport.RoundTrip(newReq)
 			if err != nil {
 				return nil, err
 			}
 			defer resp.Body.Close()
+
+			logResponse(resp)
 
 			if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
 				return nil, fmt.Errorf("unexpected HTTP status %s", resp.Status)

@@ -12,11 +12,12 @@ import (
 func main() {
 	url := "https://download.freebsd.org/releases/amd64/amd64/ISO-IMAGES/14.3/FreeBSD-14.3-RELEASE-amd64-disc1.iso"
 
+	httpseek.SetLogger(httpseek.StdLogger())
+
 	r, err := httpseek.Open(url)
 	if err != nil {
 		panic(err)
 	}
-	r.SetLogger(httpseek.StdLogger())
 	defer r.Close()
 
 	buf := make([]byte, 16)

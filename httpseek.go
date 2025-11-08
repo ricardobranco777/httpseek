@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httputil"
 	"strconv"
 	"strings"
 )
@@ -15,7 +14,6 @@ import (
 // ReaderAtHTTP implements io.ReaderAt via HTTP Range requests.
 type ReaderAtHTTP struct {
 	client *http.Client
-	logger Logger
 	meta   Metadata
 	size   int64
 	url    string
@@ -31,6 +29,8 @@ func NewReaderAt(url string, client *http.Client) (*ReaderAtHTTP, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	logRequest(req)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -59,7 +59,6 @@ func NewReaderAt(url string, client *http.Client) (*ReaderAtHTTP, error) {
 		url:    url,
 		client: client,
 		size:   size,
-		logger: NoopLogger(),
 		meta:   FromHeaders(resp.Header),
 	}, nil
 }
@@ -87,23 +86,11 @@ func (r *ReaderAtHTTP) ReadAtContext(ctx context.Context, p []byte, off int64) (
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, end))
 	r.meta.ApplyValidators(req.Header)
 
-	if dump, err := httputil.DumpRequestOut(req, true); err == nil {
-		r.logger.Debug("", string(dump))
-	} else {
-		r.logger.Error("Failed to dump request", err)
-	}
-
 	resp, err := r.client.Do(req)
 	if err != nil {
 		return 0, err
 	}
 	defer resp.Body.Close()
-
-	if dump, err := httputil.DumpResponse(resp, true); err == nil {
-		r.logger.Debug("", string(dump))
-	} else {
-		r.logger.Error("Failed to dump response", err)
-	}
 
 	switch resp.StatusCode {
 	case http.StatusPartialContent, http.StatusOK:
@@ -132,10 +119,6 @@ func (r *ReaderAtHTTP) Size() int64 { return r.size }
 
 // Close is a no-op for interface compatibility.
 func (r *ReaderAtHTTP) Close() error { return nil }
-
-// SetLogger sets an optional logger for debug output.
-// If nil, no logs are emitted.
-func (r *ReaderAtHTTP) SetLogger(l Logger) { r.logger = l }
 
 // Compile-time interface satisfaction checks
 var _ io.ReaderAt = (*ReaderAtHTTP)(nil)

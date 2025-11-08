@@ -5,6 +5,8 @@ package httpseek
 import (
 	"fmt"
 	"log"
+	"net/http"
+	"net/http/httputil"
 )
 
 // Logger is a minimal interface for debug/error logging.
@@ -28,3 +30,31 @@ func StdLogger() Logger {
 
 // NoopLogger discards all logs.
 func NoopLogger() Logger { return LogFunc(func(string, string, ...any) {}) }
+
+var logger Logger
+
+// SetLogger sets an optional logger for debug output.
+// If nil, no logs are emitted.
+func SetLogger(l Logger) {
+	logger = l
+}
+
+func logRequest(req *http.Request) {
+        if logger != nil {
+                if dump, err := httputil.DumpRequestOut(req, true); err == nil {
+                        logger.Debug("", string(dump))
+                } else {
+                        logger.Error("Failed to dump request", err)
+                }
+        }
+}
+
+func logResponse(resp *http.Response) {
+        if logger != nil {
+                if dump, err := httputil.DumpResponse(resp, true); err == nil {
+                        logger.Debug("", string(dump))
+                } else {
+                        logger.Error("Failed to dump response", err)
+                }
+        }
+}
