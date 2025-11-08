@@ -14,8 +14,8 @@ var ErrInvalidSeek = errors.New("invalid seek")
 // Internally, it uses ReaderAtHTTP for range-based access.
 type HTTPFile struct {
 	*ReaderAtHTTP
-	off int64
-	mu  sync.Mutex
+	offset int64
+	mu     sync.Mutex
 }
 
 // NewReadSeeker wraps an existing ReaderAtHTTP.
@@ -28,8 +28,8 @@ func (r *HTTPFile) Read(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	n, err := r.ReadAt(p, r.off)
-	r.off += int64(n)
+	n, err := r.ReadAt(p, r.offset)
+	r.offset += int64(n)
 	return n, err
 }
 
@@ -38,23 +38,21 @@ func (r *HTTPFile) Seek(offset int64, whence int) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	var newOff int64
 	switch whence {
 	case io.SeekStart:
-		newOff = offset
 	case io.SeekCurrent:
-		newOff = r.off + offset
+		offset += r.offset
 	case io.SeekEnd:
-		newOff = r.Size() + offset
+		offset += r.Size()
 	default:
 		return 0, ErrInvalidSeek
 	}
 
-	if newOff < 0 {
+	if offset < 0 {
 		return 0, ErrInvalidSeek
 	}
-	r.off = newOff
-	return r.off, nil
+	r.offset = offset
+	return r.offset, nil
 }
 
 // ReadAtContext is like ReadAt with context.
