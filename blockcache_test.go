@@ -214,10 +214,8 @@ func TestCachedBlockTransport_Singleflight(t *testing.T) {
 	req.Header.Set("Range", "bytes=0-100")
 
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			resp, err := client.Do(req)
 			if err != nil {
 				t.Errorf("error: %v", err)
@@ -225,7 +223,7 @@ func TestCachedBlockTransport_Singleflight(t *testing.T) {
 			}
 			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -372,7 +370,7 @@ func TestCachedBlockTransport_Non206ResponseIsNotCached(t *testing.T) {
 	req, _ := http.NewRequest("GET", "http://example.com", nil)
 	req.Header.Set("Range", "bytes=0-127")
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		resp, err := client.Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -410,10 +408,8 @@ func TestCachedBlockTransport_ConcurrentAccess(t *testing.T) {
 	resp.Body.Close()
 
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			r, err := http.NewRequest("GET", srv.URL, nil)
 			if err != nil {
 				t.Error(err)
@@ -427,7 +423,7 @@ func TestCachedBlockTransport_ConcurrentAccess(t *testing.T) {
 			}
 			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
-		}()
+		})
 	}
 	wg.Wait()
 

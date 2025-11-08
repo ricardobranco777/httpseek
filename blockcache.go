@@ -105,10 +105,7 @@ func (t *CachedBlockTransport) RoundTrip(req *http.Request) (*http.Response, err
 
 	// Compute aligned block boundaries.
 	blockStart := (start / bs) * bs
-	blockEnd := (end / bs) * bs
-	if blockEnd < blockStart {
-		blockEnd = blockStart
-	}
+	blockEnd := max((end/bs)*bs, blockStart)
 
 	numBlocks := ((blockEnd - blockStart) / bs) + 1
 	if numBlocks <= 0 {
