@@ -19,13 +19,13 @@ import (
 func serveBytes(data []byte) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
-		case "HEAD":
+		case http.MethodHead:
 			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
 			w.Header().Set("Accept-Ranges", "bytes")
 			w.Header().Set("ETag", `"v1"`)
 			w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 			w.WriteHeader(http.StatusOK)
-		case "GET":
+		case http.MethodGet:
 			// Validate precondition headers (simulate change)
 			ifMatch := r.Header.Get("If-Match")
 			if ifMatch != "" && ifMatch != `"v1"` {
@@ -174,7 +174,7 @@ func TestReaderAt_ServerWithoutRangeSupport(t *testing.T) {
 
 func TestReaderAt_MissingContentLength(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "HEAD" {
+		if r.Method == http.MethodHead {
 			w.Header().Set("Accept-Ranges", "bytes")
 			w.WriteHeader(http.StatusOK)
 		}
@@ -203,11 +203,11 @@ func TestReaderAt_HeadFailure(t *testing.T) {
 func serveSlowBytes(data []byte, delay time.Duration) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
-		case "HEAD":
+		case http.MethodHead:
 			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
 			w.Header().Set("Accept-Ranges", "bytes")
 			w.WriteHeader(http.StatusOK)
-		case "GET":
+		case http.MethodGet:
 			rangeHdr := r.Header.Get("Range")
 			var start, end int
 			fmt.Sscanf(rangeHdr, "bytes=%d-%d", &start, &end)

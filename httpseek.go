@@ -25,7 +25,7 @@ func NewReaderAt(url string, client *http.Client) (*ReaderAtHTTP, error) {
 		client = http.DefaultClient
 	}
 
-	req, err := http.NewRequest("HEAD", url, nil)
+	req, err := http.NewRequest(http.MethodHead, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (r *ReaderAtHTTP) ReadAtContext(ctx context.Context, p []byte, off int64) (
 		end = r.size - 1
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", r.url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.url, nil)
 	if err != nil {
 		return 0, err
 	}

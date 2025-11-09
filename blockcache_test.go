@@ -58,7 +58,7 @@ func TestCachedBlockTransport_BasicCaching(t *testing.T) {
 	}
 
 	// Request within first block
-	req1, _ := http.NewRequest("GET", srv.URL, nil)
+	req1, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
 	req1.Header.Set("Range", "bytes=0-127")
 	resp1, err := client.Do(req1)
 	if err != nil {
@@ -75,7 +75,7 @@ func TestCachedBlockTransport_BasicCaching(t *testing.T) {
 	}
 
 	// Request another subrange within same block (should hit cache)
-	req2, _ := http.NewRequest("GET", srv.URL, nil)
+	req2, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
 	req2.Header.Set("Range", "bytes=100-200")
 	resp2, err := client.Do(req2)
 	if err != nil {
@@ -106,14 +106,14 @@ func TestCachedBlockTransport_MultipleBlocks(t *testing.T) {
 	}
 
 	// Request from block 0
-	reqA, _ := http.NewRequest("GET", srv.URL, nil)
+	reqA, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
 	reqA.Header.Set("Range", "bytes=0-255")
 	respA, _ := client.Do(reqA)
 	io.Copy(io.Discard, respA.Body)
 	respA.Body.Close()
 
 	// Request from block 1
-	reqB, _ := http.NewRequest("GET", srv.URL, nil)
+	reqB, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
 	reqB.Header.Set("Range", "bytes=600-700")
 	respB, _ := client.Do(reqB)
 	io.Copy(io.Discard, respB.Body)
@@ -124,7 +124,7 @@ func TestCachedBlockTransport_MultipleBlocks(t *testing.T) {
 	}
 
 	// Request again from block 0 (cache hit)
-	reqC, _ := http.NewRequest("GET", srv.URL, nil)
+	reqC, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
 	reqC.Header.Set("Range", "bytes=100-200")
 	respC, _ := client.Do(reqC)
 	io.Copy(io.Discard, respC.Body)
@@ -149,7 +149,7 @@ func TestCachedBlockTransport_UnalignedRequest(t *testing.T) {
 	}
 
 	// Request not aligned to block boundaries
-	req, _ := http.NewRequest("GET", srv.URL, nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
 	req.Header.Set("Range", "bytes=400-550")
 	resp, err := client.Do(req)
 	if err != nil {
@@ -180,7 +180,7 @@ func TestCachedBlockTransport_FinalPartialBlock(t *testing.T) {
 	}
 
 	// Request that falls inside the final (partial) block
-	req, _ := http.NewRequest("GET", srv.URL, nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
 	req.Header.Set("Range", "bytes=3584-4095") // Last 512 bytes, but only 4096 total
 	resp, err := client.Do(req)
 	if err != nil {
@@ -210,7 +210,7 @@ func TestCachedBlockTransport_Singleflight(t *testing.T) {
 		},
 	}
 
-	req, _ := http.NewRequest("GET", srv.URL, nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
 	req.Header.Set("Range", "bytes=0-100")
 
 	var wg sync.WaitGroup
@@ -245,7 +245,7 @@ func TestCachedBlockTransport_BlockSize_Default(t *testing.T) {
 		},
 	}
 
-	req, _ := http.NewRequest("GET", srv.URL, nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
 	req.Header.Set("Range", "bytes=0-100")
 	resp, err := client.Do(req)
 	if err != nil {
@@ -304,7 +304,7 @@ func TestCachedBlockTransport_NilCachePassthrough(t *testing.T) {
 		BlockSize: 512,
 	}
 	client := &http.Client{Transport: tr}
-	req, _ := http.NewRequest("GET", "http://example.com", nil)
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
 	req.Header.Set("Range", "bytes=0-3")
 	resp, err := client.Do(req)
 	if err != nil {
@@ -331,7 +331,7 @@ func TestCachedBlockTransport_ClearRemovesEntries(t *testing.T) {
 		},
 	}
 
-	req, _ := http.NewRequest("GET", srv.URL, nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
 	req.Header.Set("Range", "bytes=0-127")
 	resp1, _ := client.Do(req)
 	io.Copy(io.Discard, resp1.Body)
@@ -367,7 +367,7 @@ func TestCachedBlockTransport_Non206ResponseIsNotCached(t *testing.T) {
 		BlockSize: 512,
 	}
 	client := &http.Client{Transport: tr}
-	req, _ := http.NewRequest("GET", "http://example.com", nil)
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
 	req.Header.Set("Range", "bytes=0-127")
 
 	for range 2 {
@@ -398,7 +398,7 @@ func TestCachedBlockTransport_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Warm cache
-	req, _ := http.NewRequest("GET", srv.URL, nil)
+	req, _ := http.NewRequest(http.MethodGet, srv.URL, nil)
 	req.Header.Set("Range", "bytes=0-255")
 	resp, err := client.Do(req)
 	if err != nil {
@@ -410,7 +410,7 @@ func TestCachedBlockTransport_ConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 10 {
 		wg.Go(func() {
-			r, err := http.NewRequest("GET", srv.URL, nil)
+			r, err := http.NewRequest(http.MethodGet, srv.URL, nil)
 			if err != nil {
 				t.Error(err)
 				return
@@ -449,7 +449,7 @@ func TestCachedBlockTransport_ErrorsDoNotCache(t *testing.T) {
 	}
 
 	client := &http.Client{Transport: tr}
-	req, _ := http.NewRequest("GET", "http://example.com", nil)
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
 	req.Header.Set("Range", "bytes=0-127")
 
 	_, err := client.Do(req)

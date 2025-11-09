@@ -40,21 +40,21 @@ func SetLogger(l Logger) {
 }
 
 func logRequest(req *http.Request) {
-        if logger != nil {
-                if dump, err := httputil.DumpRequestOut(req, true); err == nil {
-                        logger.Debug("", string(dump))
-                } else {
-                        logger.Error("Failed to dump request", err)
-                }
-        }
+	if logger != nil {
+		if dump, err := httputil.DumpRequestOut(req, true); err == nil {
+			logger.Debug("", string(dump))
+		} else {
+			logger.Error("Failed to dump request", err)
+		}
+	}
 }
 
 func logResponse(resp *http.Response) {
-        if logger != nil {
-                if dump, err := httputil.DumpResponse(resp, true); err == nil {
-                        logger.Debug("", string(dump))
-                } else {
-                        logger.Error("Failed to dump response", err)
-                }
-        }
+	if logger != nil {
+		if dump, err := httputil.DumpResponse(resp, true); err == nil {
+			logger.Debug("", string(dump))
+		} else {
+			logger.Error("Failed to dump response", err)
+		}
+	}
 }

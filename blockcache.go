@@ -82,7 +82,7 @@ func (t *CachedBlockTransport) RoundTrip(req *http.Request) (*http.Response, err
 	}
 	bs := t.BlockSize
 
-	if req.Method != "GET" {
+	if req.Method != http.MethodGet {
 		return t.Transport.RoundTrip(req)
 	}
 	rangeHdr := req.Header.Get("Range")

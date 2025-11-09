@@ -15,11 +15,11 @@ import (
 func serveBytesRange(data []byte) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
-		case "HEAD":
+		case http.MethodHead:
 			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
 			w.Header().Set("Accept-Ranges", "bytes")
 			w.WriteHeader(http.StatusOK)
-		case "GET":
+		case http.MethodGet:
 			rangeHdr := r.Header.Get("Range")
 			if rangeHdr == "" {
 				http.Error(w, "Range required", http.StatusBadRequest)
