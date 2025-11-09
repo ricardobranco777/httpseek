@@ -22,7 +22,7 @@ type HTTPFile struct {
 // HTTPFile satisfies these interfaces:
 var (
 	_ io.ReaderAt       = (*HTTPFile)(nil)
-	_ io.ReadSeeker	    = (*HTTPFile)(nil)
+	_ io.ReadSeeker     = (*HTTPFile)(nil)
 	_ io.ReadSeekCloser = (*HTTPFile)(nil)
 )
 
@@ -37,11 +37,16 @@ func New(url string, client *http.Client) (*HTTPFile, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	logRequest(req, true)
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	resp.Body.Close()
+
+	logResponse(resp, true)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("httpseek: HEAD %s returned %s", url, resp.Status)
@@ -107,11 +112,15 @@ func (r *HTTPFile) ReadAt(p []byte, offset int64) (int, error) {
 	}
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", offset, end))
 
+	logRequest(req, true)
+
 	resp, err := r.client.Do(req)
 	if err != nil {
 		return 0, err
 	}
 	defer resp.Body.Close()
+
+	logResponse(resp, false)
 
 	switch resp.StatusCode {
 	case http.StatusPartialContent, http.StatusOK:
