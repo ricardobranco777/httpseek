@@ -72,6 +72,11 @@ func Open(url string, client *http.Client) (*HTTPFile, error) {
 	return New(url, nil)
 }
 
+// ContentType returns the Content-Type
+func (r *HTTPFile) ContentType() string {
+	return r.meta.ContentType
+}
+
 // Close closes the file.
 func (r *HTTPFile) Close() error {
 	return nil

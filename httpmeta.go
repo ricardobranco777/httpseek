@@ -10,6 +10,7 @@ import (
 
 // Metadata captures ETag and Last-Modified headers for cache validation.
 type Metadata struct {
+	ContentType  string
 	ETag         string
 	LastModified string
 	Length       int64
@@ -21,6 +22,7 @@ type Metadata struct {
 // returned by Content-Range in 206 Partial Content responses.
 func extractMetadata(h http.Header) Metadata {
 	m := Metadata{
+		ContentType:  h.Get("Content-Type"),
 		ETag:         h.Get("ETag"),
 		LastModified: h.Get("Last-Modified"),
 	}
