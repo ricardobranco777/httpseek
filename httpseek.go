@@ -7,15 +7,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 )
 
 // HTTPFile implements io.ReaderAt and io.ReadSeekCloser and io.ReaderAt using HTTP Range requests.
 type HTTPFile struct {
 	client *http.Client
+	meta   Metadata
 	off    int64
-	size   int64
 	url    string
 }
 
@@ -52,13 +51,9 @@ func New(url string, client *http.Client) (*HTTPFile, error) {
 		return nil, fmt.Errorf("httpseek: HEAD %s returned %s", url, resp.Status)
 	}
 
-	cl := resp.Header.Get("Content-Length")
-	if cl == "" {
-		return nil, errors.New("httpseek: missing Content-Length")
-	}
-	size, err := strconv.ParseInt(cl, 10, 64)
-	if err != nil || size < 0 {
-		return nil, fmt.Errorf("httpseek: invalid Content-Length: %q", cl)
+	meta := extractMetadata(resp.Header)
+	if meta.Length <= 0 {
+		return nil, fmt.Errorf("httpseek: missing Content-Length")
 	}
 
 	if !strings.Contains(resp.Header.Get("Accept-Ranges"), "bytes") {
@@ -67,7 +62,7 @@ func New(url string, client *http.Client) (*HTTPFile, error) {
 
 	return &HTTPFile{
 		client: client,
-		size:   size,
+		meta:   meta,
 		url:    url,
 	}, nil
 }
@@ -97,13 +92,13 @@ func (r *HTTPFile) ReadAt(p []byte, offset int64) (int, error) {
 	if offset < 0 {
 		return 0, errors.New("httpseek: invalid offset")
 	}
-	if offset >= r.size {
+	if offset >= r.meta.Length {
 		return 0, io.EOF
 	}
 
 	end := offset + int64(len(p)) - 1
-	if end >= r.size {
-		end = r.size - 1
+	if end >= r.meta.Length {
+		end = r.meta.Length - 1
 	}
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, r.url, nil)
@@ -111,6 +106,7 @@ func (r *HTTPFile) ReadAt(p []byte, offset int64) (int, error) {
 		return 0, err
 	}
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", offset, end))
+	r.meta.ApplyValidators(req.Header)
 
 	logRequest(req, true)
 
@@ -128,6 +124,11 @@ func (r *HTTPFile) ReadAt(p []byte, offset int64) (int, error) {
 		return 0, fmt.Errorf("httpseek: unexpected HTTP status %s", resp.Status)
 	}
 
+	meta := extractMetadata(resp.Header)
+	if !r.meta.Equal(meta) {
+		return 0, fmt.Errorf("httpseek: metadata mismatch")
+	}
+
 	n, err := io.ReadFull(resp.Body, p[:end-offset+1])
 	if err == io.ErrUnexpectedEOF {
 		err = io.EOF
@@ -142,7 +143,7 @@ func (r *HTTPFile) Seek(offset int64, whence int) (int64, error) {
 	case io.SeekCurrent:
 		offset += r.off
 	case io.SeekEnd:
-		offset += r.size
+		offset += r.meta.Length
 	default:
 		return 0, errors.New("httpseek: invalid whence")
 	}
@@ -155,5 +156,5 @@ func (r *HTTPFile) Seek(offset int64, whence int) (int64, error) {
 
 // Size returns the remote file size in bytes.
 func (r *HTTPFile) Size() int64 {
-	return r.size
+	return r.meta.Length
 }

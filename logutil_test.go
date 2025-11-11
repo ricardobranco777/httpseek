@@ -74,6 +74,6 @@ func TestNoopLogger(t *testing.T) {
 	}
 }
 
-func TestLogFunc_ImplementsLogger(t *testing.T) {
+func TestLogFuncImplementsLogger(t *testing.T) {
 	var _ Logger = LogFunc(func(level, msg string, args ...any) {})
 }
