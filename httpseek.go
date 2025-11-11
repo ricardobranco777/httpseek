@@ -72,6 +72,11 @@ func New(url string, client *http.Client) (*HTTPFile, error) {
 	}, nil
 }
 
+// Open returns a HTTPFile.
+func Open(url string, client *http.Client) (*HTTPFile, error) {
+	return New(url, nil)
+}
+
 // Close closes the file.
 func (r *HTTPFile) Close() error {
 	return nil
