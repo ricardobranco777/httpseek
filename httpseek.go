@@ -115,7 +115,7 @@ func (r *HTTPFile) ReadAt(p []byte, offset int64) (int, error) {
 	}
 	defer resp.Body.Close()
 
-	logResponse(resp, true)
+	logResponse(resp, false)
 
 	switch resp.StatusCode {
 	case http.StatusPartialContent, http.StatusOK:
