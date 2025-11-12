@@ -68,7 +68,7 @@ func New(url string, client *http.Client) (*HTTPFile, error) {
 }
 
 // Open returns a HTTPFile.
-func Open(url string, client *http.Client) (*HTTPFile, error) {
+func Open(url string) (*HTTPFile, error) {
 	return New(url, nil)
 }
 
