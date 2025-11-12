@@ -12,6 +12,7 @@ import (
 
 // HTTPFile implements io.ReaderAt and io.ReadSeekCloser using HTTP Range requests.
 type HTTPFile struct {
+	cache  Cache
 	client *http.Client
 	meta   Metadata
 	off    int64
@@ -106,6 +107,18 @@ func (r *HTTPFile) ReadAt(p []byte, offset int64) (int, error) {
 		end = r.meta.Length - 1
 	}
 
+	// Try cache
+	key := fmt.Sprintf("%d-%d", offset, end)
+	if r.cache != nil {
+		if data, ok := r.cache.Get(key); ok {
+			n := copy(p, data)
+			if int64(n) < int64(len(p)) {
+				return n, io.EOF
+			}
+			return n, nil
+		}
+	}
+
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, r.url, nil)
 	if err != nil {
 		return 0, err
@@ -137,6 +150,11 @@ func (r *HTTPFile) ReadAt(p []byte, offset int64) (int, error) {
 	n, err := io.ReadFull(resp.Body, p[:end-offset+1])
 	if err == io.ErrUnexpectedEOF {
 		err = io.EOF
+	} else if err == nil && r.cache != nil {
+		// Store in cache
+		data := make([]byte, n)
+		copy(data, p[:n])
+		r.cache.Set(key, p[:n])
 	}
 	return n, err
 }
