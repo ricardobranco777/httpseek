@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// HTTPFile implements io.ReaderAt and io.ReadSeekCloser and io.ReaderAt using HTTP Range requests.
+// HTTPFile implements io.ReaderAt and io.ReadSeekCloser using HTTP Range requests.
 type HTTPFile struct {
 	client *http.Client
 	meta   Metadata
