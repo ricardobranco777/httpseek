@@ -129,43 +129,67 @@ func (r *UffdHTTPReader) faultLoop() {
 func (r *UffdHTTPReader) handlePageFault(pf *uffd.UffdMsgPagefault) {
 	faultAddr := uintptr(pf.Address)
 
-	// Align to page boundary.
-	pageAddr := faultAddr &^ uintptr(r.PageSize-1)
+	// Page-align the fault address.
+	pageSize := r.PageSize
+	pageMask := uintptr(pageSize - 1)
+	pageAddr := faultAddr &^ pageMask
 
-	// Compute offset of this page relative to the base of the mapping.
-	offset := int64(pageAddr - r.base)
-	if offset < 0 || offset >= int64(r.mapLen) {
-		log.Printf("httpseek: page fault out of range: addr=0x%x offset=%d", faultAddr, offset)
+	// Compute page index relative to the start of the mapping.
+	if pageAddr < r.base {
+		log.Printf("httpseek: page fault before base: addr=0x%x base=0x%x", faultAddr, r.base)
+		return
+	}
+	pageIndex := (pageAddr - r.base) / uintptr(pageSize)
+
+	// Compute file offset in bytes.
+	fileOffset := int64(pageIndex) * int64(pageSize)
+
+	// Safety check against mapped region.
+	if fileOffset < 0 || fileOffset >= int64(r.mapLen) {
+		log.Printf("httpseek: page fault out of mapped range: addr=0x%x idx=%d off=%d", faultAddr, pageIndex, fileOffset)
 		return
 	}
 
-	buf := make([]byte, r.PageSize)
+	buf := make([]byte, pageSize)
 
-	// Compute how much of this page is within the file.
+	// How much of this page is actually in the file?
 	fileSize := r.File.Size()
-	if offset >= fileSize {
-		// Entire page is beyond EOF: just zero-fill and install it.
+	if fileOffset >= fileSize {
+		// Completely beyond EOF: leave buf zero-filled.
 	} else {
-		toRead := int64(r.PageSize)
-		if offset+toRead > fileSize {
-			toRead = fileSize - offset
+		// Clamp read to not cross EOF.
+		toRead := int64(pageSize)
+		if fileOffset+toRead > fileSize {
+			toRead = fileSize - fileOffset
 		}
 
-		n, err := r.File.ReadAt(buf[:toRead], offset)
-		if err != nil && !errors.Is(err, io.EOF) {
-			log.Fatalf("httpseek: HTTP ReadAt failed at offset %d: %v", offset, err)
+		// Try to fill [0:toRead) in buf.
+		want := int(toRead)
+		var read int
+		for read < want {
+			n, err := r.File.ReadAt(buf[read:want], fileOffset+int64(read))
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					read += n
+					break
+				}
+				log.Fatalf("httpseek: HTTP ReadAt failed at offset %d: %v", fileOffset+int64(read), err)
+			}
+			read += n
+			if n == 0 {
+				break
+			}
 		}
-		_ = n // buf already contains data; remainder is zero.
+		// Remaining bytes in buf stay zero.
 	}
 
-	// Satisfy the fault using UFFDIO_COPY with a full page.
-	_, err := r.Uffd.Copy(
+	// Satisfy the fault using a full-page COPY to a page-aligned address.
+	if _, err := r.Uffd.Copy(
 		pageAddr,
 		uintptr(unsafe.Pointer(&buf[0])),
-		uintptr(r.PageSize),
+		uintptr(pageSize),
 		0,
-	)
-	if err != nil {
+	); err != nil {
 		log.Fatalf("httpseek: uffd.Copy failed at addr=0x%x: %v", pageAddr, err)
 	}
 }
