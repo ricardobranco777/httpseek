@@ -16,17 +16,30 @@ import (
 type UffdHTTPReader struct {
 	File     *HTTPFile
 	Uffd     *uffd.Uffd
-	Addr     []byte // mmap’d region
+	full     []byte // full mmap'd region (page-aligned length)
+	data     []byte // user-visible slice: len == file size
 	PageSize int
-	done     chan struct{}
+
+	base   uintptr // start address of mapping
+	mapLen int     // page-aligned mapping length
+	pos    int64   // read offset for io.Reader
+
+	done chan struct{}
 }
 
 // Ensure interface sanity
 var (
 	_ io.Closer = (*UffdHTTPReader)(nil)
+	_ io.Reader = (*UffdHTTPReader)(nil)
 )
 
+// roundUp rounds n up to a multiple of align (align must be power of 2).
+func roundUp(n, align int) int {
+	return (n + align - 1) &^ (align - 1)
+}
+
 // NewUffdHTTPReader maps a remote HTTP file using userfaultfd.
+// It returns a reader that implements io.Reader and exposes Bytes() for zero-copy access.
 func NewUffdHTTPReader(f *HTTPFile) (*UffdHTTPReader, error) {
 	pageSize := unix.Getpagesize()
 
@@ -35,38 +48,51 @@ func NewUffdHTTPReader(f *HTTPFile) (*UffdHTTPReader, error) {
 		return nil, fmt.Errorf("invalid size: %d", n)
 	}
 
-	length := (n + pageSize - 1) &^ (pageSize - 1)
+	// Page-align the mapping length.
+	mapLen := roundUp(n, pageSize)
 
-	// Allocate PROT_NONE region so every access faults.
-	addr, err := unix.Mmap(-1, 0, length, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_PRIVATE|unix.MAP_ANONYMOUS)
+	// Anonymous mapping: pages are missing initially and will fault on first use.
+	full, err := unix.Mmap(
+		-1,
+		0,
+		mapLen,
+		unix.PROT_READ|unix.PROT_WRITE,
+		unix.MAP_PRIVATE|unix.MAP_ANONYMOUS,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("mmap failed: %w", err)
 	}
 
-	// Create the UFFD instance.
-	u, err := uffd.New(uffd.UFFD_USER_MODE_ONLY, 0)
+	base := uintptr(unsafe.Pointer(&full[0]))
+
+	// Choose flags for userfaultfd.
+	flags := 0
+	if !uffd.UnprivilegedUserfaultfd && uffd.HaveUserModeOnly {
+		flags |= uffd.UFFD_USER_MODE_ONLY
+	}
+
+	u, err := uffd.New(flags, 0)
 	if err != nil {
-		unix.Munmap(addr)
+		_ = unix.Munmap(full)
 		return nil, fmt.Errorf("userfaultfd: %w", err)
 	}
 
 	r := &UffdHTTPReader{
 		File:     f,
 		Uffd:     u,
-		Addr:     addr,
+		full:     full,
+		data:     full[:n], // visible file content slice
 		PageSize: pageSize,
+		base:     base,
+		mapLen:   mapLen,
+		pos:      0,
 		done:     make(chan struct{}),
 	}
 
-	// Register the region for page-fault handling.
-	_, err = u.Register(
-		uintptr(unsafe.Pointer(&addr[0])),
-		uintptr(length),
-		uffd.UFFDIO_REGISTER_MODE_MISSING,
-	)
-	if err != nil {
-		u.Close()
-		unix.Munmap(addr)
+	// Register the full page-aligned region.
+	if _, err = u.Register(base, uintptr(mapLen), uffd.UFFDIO_REGISTER_MODE_MISSING); err != nil {
+		_ = u.Close()
+		_ = unix.Munmap(full)
 		return nil, fmt.Errorf("userfaultfd register: %w", err)
 	}
 
@@ -77,56 +103,103 @@ func NewUffdHTTPReader(f *HTTPFile) (*UffdHTTPReader, error) {
 
 // faultLoop runs in a goroutine and handles all page faults.
 func (r *UffdHTTPReader) faultLoop() {
-	base := uintptr(unsafe.Pointer(&r.Addr[0]))
-
 	for {
 		msg, err := r.Uffd.ReadMsg()
 		if err != nil {
+			// If we're closing, exit quietly.
 			select {
 			case <-r.done:
 				return
 			default:
-				log.Printf("uffd read event error: %v", err)
+				log.Printf("httpseek: uffd.ReadMsg error: %v", err)
 				continue
 			}
 		}
 
 		switch msg.Event {
 		case uffd.UFFD_EVENT_PAGEFAULT:
-			fault := (*uffd.UffdMsgPagefault)(unsafe.Pointer(&msg.Data))
-			addr := uintptr(fault.Address)
-			offset := int64(addr - base)
-
-			// Align to page
-			pageOffset := offset &^ int64(r.PageSize-1)
-
-			buf := make([]byte, r.PageSize)
-			_, err := r.File.ReadAt(buf, pageOffset)
-			if err != nil && !errors.Is(err, io.EOF) {
-				log.Fatalf("httpseek: HTTP read failed: %v", err)
-			}
-
-			pageAddr := addr &^ uintptr(r.PageSize-1)
-			// Copy resolved data into the page
-			_, err = r.Uffd.Copy(pageAddr, uintptr(unsafe.Pointer(&buf[0])), uintptr(r.PageSize), uint64(0))
-			if err != nil {
-				log.Fatalf("uffd.Copy failed: %v", err)
-			}
-
+			pf := msg.GetPagefault()
+			r.handlePageFault(pf)
 		default:
-			log.Printf("uffd: unexpected event type %T", msg)
+			log.Printf("httpseek: unexpected uffd event 0x%x", msg.Event)
 		}
 	}
 }
 
-// Close unregisters the UFFD handler and unmaps memory.
-func (r *UffdHTTPReader) Close() error {
-	close(r.done)
-	r.Uffd.Close()
-	return unix.Munmap(r.Addr)
+func (r *UffdHTTPReader) handlePageFault(pf *uffd.UffdMsgPagefault) {
+	faultAddr := uintptr(pf.Address)
+
+	// Align to page boundary.
+	pageAddr := faultAddr &^ uintptr(r.PageSize-1)
+
+	// Compute offset of this page relative to the base of the mapping.
+	offset := int64(pageAddr - r.base)
+	if offset < 0 || offset >= int64(r.mapLen) {
+		log.Printf("httpseek: page fault out of range: addr=0x%x offset=%d", faultAddr, offset)
+		return
+	}
+
+	buf := make([]byte, r.PageSize)
+
+	// Compute how much of this page is within the file.
+	fileSize := r.File.Size()
+	if offset >= fileSize {
+		// Entire page is beyond EOF: just zero-fill and install it.
+	} else {
+		toRead := int64(r.PageSize)
+		if offset+toRead > fileSize {
+			toRead = fileSize - offset
+		}
+
+		n, err := r.File.ReadAt(buf[:toRead], offset)
+		if err != nil && !errors.Is(err, io.EOF) {
+			log.Fatalf("httpseek: HTTP ReadAt failed at offset %d: %v", offset, err)
+		}
+		_ = n // buf already contains data; remainder is zero.
+	}
+
+	// Satisfy the fault using UFFDIO_COPY with a full page.
+	_, err := r.Uffd.Copy(
+		pageAddr,
+		uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(r.PageSize),
+		0,
+	)
+	if err != nil {
+		log.Fatalf("httpseek: uffd.Copy failed at addr=0x%x: %v", pageAddr, err)
+	}
 }
 
-// Bytes returns the mmap’d region. Accessing it triggers HTTP traffic lazily.
+// Read implements io.Reader on top of the mmap'd region.
+// Accessing the region transparently triggers userfaultfd page faults.
+func (r *UffdHTTPReader) Read(p []byte) (int, error) {
+	if r.pos >= int64(len(r.data)) {
+		return 0, io.EOF
+	}
+
+	n := copy(p, r.data[r.pos:])
+	r.pos += int64(n)
+
+	if n < len(p) || r.pos >= int64(len(r.data)) {
+		return n, io.EOF
+	}
+	return n, nil
+}
+
+// Bytes returns the memory-mapped region representing the file contents.
+// Accessing it directly also triggers UFFD faults on demand.
 func (r *UffdHTTPReader) Bytes() []byte {
-	return r.Addr
+	return r.data
+}
+
+// Close unregisters the UFFD range, closes the fd, and unmaps memory.
+func (r *UffdHTTPReader) Close() error {
+	// Signal the fault loop to exit.
+	close(r.done)
+
+	// Best-effort cleanup.
+	_ = r.Uffd.Unregister(r.base, uintptr(r.mapLen))
+	_ = r.Uffd.Close()
+
+	return unix.Munmap(r.full)
 }
