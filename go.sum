@@ -1,0 +1,4 @@
+github.com/ricardobranco777/go-userfaultfd v0.0.0-20251104225840-4de82914da14 h1:9LCQybmkQYO9OAWJ2OY50pdhqLv0aVK+wkZMqluYxcQ=
+github.com/ricardobranco777/go-userfaultfd v0.0.0-20251104225840-4de82914da14/go.mod h1:Hi3LAFb5RKWmFMg11n5jM7TXWb/S+Nm4bfifSyra7uA=
+golang.org/x/sys v0.38.0 h1:3yZWxaJjBmCWXqhN1qh02AkOnCQ1poK6oF+a7xWL6Gc=
+golang.org/x/sys v0.38.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
