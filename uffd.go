@@ -90,7 +90,7 @@ func NewUffdHTTPReader(f *HTTPFile) (*UffdHTTPReader, error) {
 	}
 
 	// Register the full page-aligned region.
-	if _, err = u.Register(base, uintptr(mapLen), uffd.UFFDIO_REGISTER_MODE_MISSING); err != nil {
+	if _, err = u.Register(base, mapLen, uffd.UFFDIO_REGISTER_MODE_MISSING); err != nil {
 		_ = u.Close()
 		_ = unix.Munmap(full)
 		return nil, fmt.Errorf("userfaultfd register: %w", err)
@@ -187,7 +187,7 @@ func (r *UffdHTTPReader) handlePageFault(pf *uffd.UffdMsgPagefault) {
 	if _, err := r.Uffd.Copy(
 		pageAddr,
 		uintptr(unsafe.Pointer(&buf[0])),
-		uintptr(pageSize),
+		pageSize,
 		0,
 	); err != nil {
 		log.Fatalf("httpseek: uffd.Copy failed at addr=0x%x: %v", pageAddr, err)
@@ -222,7 +222,7 @@ func (r *UffdHTTPReader) Close() error {
 	close(r.done)
 
 	// Best-effort cleanup.
-	_ = r.Uffd.Unregister(r.base, uintptr(r.mapLen))
+	_ = r.Uffd.Unregister(r.base, r.mapLen)
 	_ = r.Uffd.Close()
 
 	return unix.Munmap(r.full)
