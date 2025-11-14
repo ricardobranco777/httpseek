@@ -52,13 +52,7 @@ func NewUffdHTTPReader(f *HTTPFile) (*UffdHTTPReader, error) {
 	mapLen := roundUp(n, pageSize)
 
 	// Anonymous mapping: pages are missing initially and will fault on first use.
-	full, err := unix.Mmap(
-		-1,
-		0,
-		mapLen,
-		unix.PROT_READ|unix.PROT_WRITE,
-		unix.MAP_PRIVATE|unix.MAP_ANONYMOUS,
-	)
+	full, err := unix.Mmap(-1, 0, mapLen, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_PRIVATE|unix.MAP_ANONYMOUS)
 	if err != nil {
 		return nil, fmt.Errorf("mmap failed: %w", err)
 	}
