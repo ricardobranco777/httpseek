@@ -6,5 +6,7 @@ github.com/ricardobranco777/go-userfaultfd v0.0.0-20251113220820-a7859331f4c8 h1
 github.com/ricardobranco777/go-userfaultfd v0.0.0-20251113220820-a7859331f4c8/go.mod h1:Hi3LAFb5RKWmFMg11n5jM7TXWb/S+Nm4bfifSyra7uA=
 github.com/ricardobranco777/go-userfaultfd v0.0.0-20251114184032-9b36d85691a9 h1:dXufxKyzWuAjFoHygFN75kY7cYL+clgRqSGK4ythREU=
 github.com/ricardobranco777/go-userfaultfd v0.0.0-20251114184032-9b36d85691a9/go.mod h1:Hi3LAFb5RKWmFMg11n5jM7TXWb/S+Nm4bfifSyra7uA=
+github.com/ricardobranco777/go-userfaultfd v0.0.0-20251115122418-e2362a8a331a h1:wsVQKKPt7C9GZuG0JEyAcRRR9x0Y0R7vMgIuepI65yM=
+github.com/ricardobranco777/go-userfaultfd v0.0.0-20251115122418-e2362a8a331a/go.mod h1:Hi3LAFb5RKWmFMg11n5jM7TXWb/S+Nm4bfifSyra7uA=
 golang.org/x/sys v0.38.0 h1:3yZWxaJjBmCWXqhN1qh02AkOnCQ1poK6oF+a7xWL6Gc=
 golang.org/x/sys v0.38.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
