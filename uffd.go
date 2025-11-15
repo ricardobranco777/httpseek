@@ -60,7 +60,7 @@ func NewUffdHTTPReader(f *HTTPFile) (*UffdHTTPReader, error) {
 	base := uintptr(unsafe.Pointer(&full[0]))
 
 	// Choose flags for userfaultfd.
-	flags := 0
+	flags := unix.O_NONBLOCK
 	if !uffd.UnprivilegedUserfaultfd && uffd.HaveUserModeOnly {
 		flags |= uffd.UFFD_USER_MODE_ONLY
 	}
