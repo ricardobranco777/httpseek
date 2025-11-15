@@ -184,6 +184,10 @@ func (r *UffdHTTPReader) handlePageFault(pf *uffd.UffdMsgPagefault) {
 		pageSize,
 		0,
 	); err != nil {
+		// EEXIST means page already installed; this is harmless
+		if errors.Is(err, unix.EEXIST) {
+			return
+		}
 		log.Fatalf("httpseek: uffd.Copy failed at addr=0x%x: %v", pageAddr, err)
 	}
 }
