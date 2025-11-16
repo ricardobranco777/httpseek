@@ -134,7 +134,11 @@ func (r *HTTPFile) ReadAt(p []byte, offset int64) (int, error) {
 		return 0, fmt.Errorf("httpseek: metadata mismatch")
 	}
 
-	return resp.Body.Read(p)
+	n, err := io.ReadFull(resp.Body, p[:end-offset+1])
+	if err == io.ErrUnexpectedEOF {
+		err = io.EOF
+	}
+	return n, err
 }
 
 // Seek sets the offset for the next Read.
