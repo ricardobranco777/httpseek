@@ -91,7 +91,7 @@ func (r *HTTPFile) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// ReadAt reads exactly len(p) bytes from offset offset.
+// ReadAt reads up to len(p) bytes starting at offset.
 // It does not affect the current seek position and is safe for concurrent use.
 func (r *HTTPFile) ReadAt(p []byte, offset int64) (int, error) {
 	if offset < 0 {
@@ -105,8 +105,6 @@ func (r *HTTPFile) ReadAt(p []byte, offset int64) (int, error) {
 	if end >= r.meta.Length {
 		end = r.meta.Length - 1
 	}
-
-	want := int(end - offset + 1)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, r.url, nil)
 	if err != nil {
@@ -136,21 +134,11 @@ func (r *HTTPFile) ReadAt(p []byte, offset int64) (int, error) {
 		return 0, fmt.Errorf("httpseek: metadata mismatch")
 	}
 
-	nTotal := 0
-	for nTotal < want {
-		n, err := resp.Body.Read(p[nTotal:want])
-		if n > 0 {
-			nTotal += n
-		}
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				err = nil
-			}
-			return nTotal, err
-		}
+	n, err := io.ReadFull(resp.Body, p[:end-offset+1])
+	if err == io.ErrUnexpectedEOF || err == io.EOF {
+		err = nil
 	}
-
-	return nTotal, nil
+	return n, err
 }
 
 // Seek sets the offset for the next Read.
