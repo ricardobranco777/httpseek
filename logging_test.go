@@ -23,26 +23,32 @@ func captureLogs(t *testing.T, fn func()) string {
 func TestStdLogger(t *testing.T) {
 	tests := []struct {
 		name   string
+		debugf string
 		debug  []any
+		errorf string
 		error  []any
 		expect []string
 	}{
 		{
 			name:   "no args",
-			debug:  []any{"hello"},
-			error:  []any{"oops"},
+			debugf: "hello",
+			errorf: "oops",
 			expect: []string{"DEBUG: hello", "ERROR: oops"},
 		},
 		{
-			name:   "one arg string/int",
-			debug:  []any{"key", "value"},
-			error:  []any{"fail", 123},
+			name:   "formatted values",
+			debugf: "key %s",
+			debug:  []any{"value"},
+			errorf: "fail %d",
+			error:  []any{123},
 			expect: []string{"DEBUG: key value", "ERROR: fail 123"},
 		},
 		{
-			name:   "multiple args",
-			debug:  []any{"test", 1, 2, 3},
-			error:  []any{"boom", "x", "y"},
+			name:   "multiple format args",
+			debugf: "test %d %d %d",
+			debug:  []any{1, 2, 3},
+			errorf: "boom %s %s",
+			error:  []any{"x", "y"},
 			expect: []string{"DEBUG: test 1 2 3", "ERROR: boom x y"},
 		},
 	}
@@ -51,8 +57,8 @@ func TestStdLogger(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			out := captureLogs(t, func() {
 				logger := StdLogger()
-				logger.Debug(tt.debug[0].(string), tt.debug[1:]...)
-				logger.Error(tt.error[0].(string), tt.error[1:]...)
+				logger.Debugf(tt.debugf, tt.debug...)
+				logger.Errorf(tt.errorf, tt.error...)
 			})
 			for _, want := range tt.expect {
 				if !strings.Contains(out, want) {
@@ -66,8 +72,8 @@ func TestStdLogger(t *testing.T) {
 func TestNoopLogger(t *testing.T) {
 	out := captureLogs(t, func() {
 		logger := NoopLogger()
-		logger.Debug("invisible", "arg1")
-		logger.Error("also invisible")
+		logger.Debugf("invisible", "arg1")
+		logger.Errorf("also invisible")
 	})
 	if out != "" {
 		t.Errorf("expected no output, got: %q", out)
