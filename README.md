@@ -1,9 +1,8 @@
 
-Implement io.ReadSeekCloser for HTTP
+Implement io.ReadSeekCloser for HTTP files.
 
-TODO
-- Add cache
-- Add context support
+It doesn't use a cache
 
 Similar projects:
-- https://github.com/jeffallen/seekinghttp
+- https://github.com/jeffallen/seekinghttp (uses a read-ahead cache)
+- https://github.com/DHowett/ranger (caches each block).
