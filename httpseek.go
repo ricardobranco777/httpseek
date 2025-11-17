@@ -12,7 +12,7 @@ import (
 
 // HTTPFile implements io.ReaderAt and io.ReadSeekCloser using HTTP Range requests.
 type HTTPFile struct {
-	Metadata
+	*Metadata
 	client *http.Client
 	off    int64
 	url    string

@@ -20,8 +20,8 @@ type Metadata struct {
 // If Etag & Last-Modified are not present, it falls back
 // to comparing the original Content-Length with the total
 // returned by Content-Range in 206 Partial Content responses.
-func extractMetadata(h http.Header) Metadata {
-	m := Metadata{
+func extractMetadata(h http.Header) *Metadata {
+	m := &Metadata{
 		ContentType:  h.Get("Content-Type"),
 		ETag:         h.Get("ETag"),
 		LastModified: h.Get("Last-Modified"),
@@ -48,7 +48,7 @@ func extractMetadata(h http.Header) Metadata {
 }
 
 // Equal reports whether two metadata values represent the same resource version.
-func (m Metadata) Equal(other Metadata) bool {
+func (m *Metadata) Equal(other *Metadata) bool {
 	if m.ETag != "" && other.ETag != "" && m.ETag != other.ETag {
 		return false
 	}
@@ -62,7 +62,7 @@ func (m Metadata) Equal(other Metadata) bool {
 }
 
 // ApplyValidators adds conditional headers to a request (for conditional GETs).
-func (m Metadata) ApplyValidators(h http.Header) {
+func (m *Metadata) ApplyValidators(h http.Header) {
 	if m.ETag != "" {
 		h.Set("If-Match", m.ETag)
 	}

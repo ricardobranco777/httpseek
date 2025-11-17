@@ -91,7 +91,8 @@ func TestApplyValidatorsSetsPreconditionHeaders(t *testing.T) {
 
 func TestApplyValidatorsEmptyDoesNothing(t *testing.T) {
 	h := make(http.Header)
-	Metadata{}.ApplyValidators(h)
+	m := &Metadata{}
+	m.ApplyValidators(h)
 
 	if len(h) != 0 {
 		t.Errorf("expected no headers set, got %+v", h)
@@ -101,49 +102,49 @@ func TestApplyValidatorsEmptyDoesNothing(t *testing.T) {
 func TestEqual(t *testing.T) {
 	tests := []struct {
 		name string
-		a, b Metadata
+		a, b *Metadata
 		want bool
 	}{
 		{
 			name: "equal both empty",
-			a:    Metadata{},
-			b:    Metadata{},
+			a:    &Metadata{},
+			b:    &Metadata{},
 			want: true,
 		},
 		{
 			name: "equal ETag and Last-Modified",
-			a:    Metadata{ETag: "abc", LastModified: "time"},
-			b:    Metadata{ETag: "abc", LastModified: "time"},
+			a:    &Metadata{ETag: "abc", LastModified: "time"},
+			b:    &Metadata{ETag: "abc", LastModified: "time"},
 			want: true,
 		},
 		{
 			name: "different ETag",
-			a:    Metadata{ETag: "a"},
-			b:    Metadata{ETag: "b"},
+			a:    &Metadata{ETag: "a"},
+			b:    &Metadata{ETag: "b"},
 			want: false,
 		},
 		{
 			name: "different Last-Modified",
-			a:    Metadata{LastModified: "t1"},
-			b:    Metadata{LastModified: "t2"},
+			a:    &Metadata{LastModified: "t1"},
+			b:    &Metadata{LastModified: "t2"},
 			want: false,
 		},
 		{
 			name: "equal lengths",
-			a:    Metadata{Length: 100},
-			b:    Metadata{Length: 100},
+			a:    &Metadata{Length: 100},
+			b:    &Metadata{Length: 100},
 			want: true,
 		},
 		{
 			name: "different lengths",
-			a:    Metadata{Length: 100},
-			b:    Metadata{Length: 200},
+			a:    &Metadata{Length: 100},
+			b:    &Metadata{Length: 200},
 			want: false,
 		},
 		{
 			name: "one empty, one not (permissive match)",
-			a:    Metadata{ETag: "x"},
-			b:    Metadata{},
+			a:    &Metadata{ETag: "x"},
+			b:    &Metadata{},
 			want: true,
 		},
 	}
