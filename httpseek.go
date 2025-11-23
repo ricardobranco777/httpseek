@@ -43,7 +43,7 @@ func New(url string, client *http.Client) (*HTTPFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 
 	logResponse(resp, true)
 
@@ -92,13 +92,13 @@ func (r *HTTPFile) ReadAt(p []byte, offset int64) (int, error) {
 	if offset < 0 {
 		return 0, errors.New("httpseek: invalid offset")
 	}
-	if offset >= r.Metadata.Length {
+	if offset >= r.Length {
 		return 0, io.EOF
 	}
 
 	end := offset + int64(len(p)) - 1
-	if end >= r.Metadata.Length {
-		end = r.Metadata.Length - 1
+	if end >= r.Length {
+		end = r.Length - 1
 	}
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, r.url, nil)
@@ -106,7 +106,7 @@ func (r *HTTPFile) ReadAt(p []byte, offset int64) (int, error) {
 		return 0, err
 	}
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", offset, end))
-	r.Metadata.ApplyValidators(req.Header)
+	r.ApplyValidators(req.Header)
 
 	logRequest(req, true)
 
@@ -125,7 +125,7 @@ func (r *HTTPFile) ReadAt(p []byte, offset int64) (int, error) {
 	}
 
 	meta := extractMetadata(resp.Header)
-	if !r.Metadata.Equal(meta) {
+	if !r.Equal(meta) {
 		return 0, fmt.Errorf("httpseek: metadata mismatch")
 	}
 
@@ -143,7 +143,7 @@ func (r *HTTPFile) Seek(offset int64, whence int) (int64, error) {
 	case io.SeekCurrent:
 		offset += r.off
 	case io.SeekEnd:
-		offset += r.Metadata.Length
+		offset += r.Length
 	default:
 		return 0, errors.New("httpseek: invalid whence")
 	}
@@ -156,5 +156,5 @@ func (r *HTTPFile) Seek(offset int64, whence int) (int64, error) {
 
 // Size returns the remote file size in bytes.
 func (r *HTTPFile) Size() int64 {
-	return r.Metadata.Length
+	return r.Length
 }
